@@ -1,0 +1,70 @@
+---
+title: "Heat Map Visualization"
+author: "Andrew Ness"
+date: "6/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(rLakeAnalyzer)
+library(reshape2)
+library(zoo)
+
+heatmap <- function(name, filepath) {
+  
+  #choose data
+  pond <- read_csv(filepath)
+  colnames(pond)[1]<-"DateTime"
+ 
+   ## full data set
+  d <- pond %>% 
+    select(DateTime, ends_with("DepthFromTop_m"), ends_with("Temp_degC"))
+  
+  ## combine sensors
+  mydata <- d %>%
+    pivot_longer(
+      -DateTime,
+      names_to = c(".value", "Var"),
+      names_sep = "_"
+    )
+  
+  ## pivot to remove _m
+  data_2 <- mydata %>%
+    pivot_wider(
+      names_from = Var,
+      values_from = SensorA:ncol(mydata)
+    )
+  
+  data_3 <- data_2 %>%
+    pivot_longer(
+      -DateTime,
+      names_to = c("Sensor", ".value"),
+      names_sep = "_"
+    ) %>%
+    mutate(DepthFromTop = round(DepthFromTop, 2))
+  
+  data_3 <- data_3 %>%
+    filter(!is.na(DepthFromTop))
+  
+  ## Using previous dcast code to split into depth variables
+  wtr <- rep("wtr", length(data_3$DepthFromTop))
+  uniq_depths <- unique(data_3$DepthFromTop)
+  pond.spread_test<-dcast(data_3, DateTime ~ wtr + DepthFromTop, value.var = "Temp", fun=mean)
+  
+  wtr_interpol<-as.matrix(pond.spread_test[,-1])
+  #fast code to interpolate NAs by row (by time instead of by depth)
+  wtr_interpol<-t(na.approx(t(wtr_interpol)))
+  
+  #Heatmap of the interpolated data
+  filled.contour(x = pond.spread_test$DateTime, y=sort(uniq_depths), main= name , wtr_interpol, ylim=c(max(uniq_depths),0),
+                 nlevels=100, color.palette = grDevices::colorRampPalette(c("violet","blue", "cyan", "green3", "yellow", "orange", "red"),bias = 1, space = "rgb"), ylab = "Depths (m)",
+                 plot.axes={lines(y = pond$PondMaxDepth_m,x=pond.spread_test$DateTime,col="black",lwd=2);
+                   axis(2, seq(0, max(uniq_depths), by =max(uniq_depths)/3),labels=round(seq(0, max(uniq_depths), by =max(uniq_depths)/3),2));
+                   axis(1,at=seq(min(pond.spread_test$DateTime), max(pond.spread_test$DateTime), 
+                                 by = "month"),labels=format(seq(min(pond.spread_test$DateTime), max(pond.spread_test$DateTime), 
+                                                                 by = "month"),format="%d%b"))})
+}
+
+max(GLEONPondProject_ThermistorData_Finlay_23A_2018$PondMaxDepth_m)
+max(GLEONPondProject_ThermistorData_Finlay_23A_2018$SensorF_DepthFromTop_m)
+```
